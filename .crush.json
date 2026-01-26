@@ -1,0 +1,5 @@
+{
+    "$schema": "https://charm.land/crush.json",
+    "options": { "disabled_tools": ["bash"] }
+  }
+  

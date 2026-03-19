@@ -1,0 +1,126 @@
+name: Create Security Audit Issues
+
+# Run once on the PR branch via workflow_dispatch, or on push to this branch
+# if the issues haven't been created yet.
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  labels: write
+
+jobs:
+  create-issues:
+    name: File audit findings as GitHub Issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Create required labels if they do not exist"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "security" --repo "$GITHUB_REPOSITORY" --color "d73a4a" --description "Security finding" 2>/dev/null || true
+          gh label create "design"   --repo "$GITHUB_REPOSITORY" --color "0075ca" --description "Design / architecture concern" 2>/dev/null || true
+          gh label create "gas"      --repo "$GITHUB_REPOSITORY" --color "e4e669" --description "Gas optimisation" 2>/dev/null || true
+
+      - name: "Issue 1 – Validator timestamp manipulation"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Validator timestamp manipulation enables premature upkeep execution" \
+            --label "security" \
+            --body 'block.timestamp can be biased ±12s by Ethereum validators. For short `INTERVAL` values this allows meaningful early triggering. Document tolerance or switch to block-number-based intervals for precision-sensitive use cases.'
+
+      - name: "Issue 2 – Permissionless performUpkeep"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Permissionless \`performUpkeep\` enables front-running of Chainlink registry" \
+            --label "security" \
+            --label "design" \
+            --body 'Any caller can invoke `performUpkeep` at the valid window, front-running the legitimate Chainlink keeper. Acceptable for minimal triggers, but future extensions adding external calls must gate on `msg.sender == AUTOMATION_REGISTRY`. Add a registry immutable and warning comment.'
+
+      - name: "Issue 3 – Timestamp drift"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Timestamp drift causes progressive interval skew over time" \
+            --label "design" \
+            --body '`lastTimestamp = block.timestamp` causes interval drift when keepers fire late. Replace with `lastTimestamp += INTERVAL` to snap to ideal boundaries and eliminate cumulative skew.'
+
+      - name: "Issue 4 – Non-standard performData suppression"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Non-standard bare expression used to suppress \`performData\` unused warning" \
+            --label "design" \
+            --body '`performData;` is a non-idiomatic and fragile suppression pattern. Replace with a named comment-out: `function performUpkeep(bytes calldata /* performData */)` to suppress at the signature level cleanly.'
+
+      - name: "Issue 5 – Missing AutomationCompatibleInterface"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Missing explicit \`AutomationCompatibleInterface\` inheritance declaration" \
+            --label "design" \
+            --body 'The interface is implemented inline without a formal declaration. This breaks `supportsInterface` checks and prevents static analyzers from validating ABI conformance. Define the interface and declare `is AutomationCompatibleInterface`.'
+
+      - name: "Issue 6 – bytes(\"\") allocation"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title '`bytes("")` allocation in `checkUpkeep` — use `new bytes(0)` or default return' \
+            --label "gas" \
+            --body '`bytes("")` creates unnecessary bytecode noise. Prefer `new bytes(0)` for explicit intent, or omit the assignment and rely on the Solidity default zero-value return for the `bytes memory` type.'
+
+      - name: "Issue 7 – Constructor require string"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Constructor \`require\` string wastes ~200 bytes of bytecode — use custom error" \
+            --label "gas" \
+            --body 'The `require` revert string `"KeeperTrigger: interval cannot be zero"` costs ~600 gas to deploy. Replace with `error ZeroInterval()` + `if (_interval == 0) revert ZeroInterval();` — consistent with the `UpkeepNotNeeded` pattern already in the contract.'
+
+      - name: "Close resolved issues (#3, #4, #5, #7) with resolution comment"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Close findings that have been fixed in code: #3 (drift), #4 (performData),
+          # #5 (interface), #7 (require string).
+          TITLES=(
+            "Timestamp drift causes progressive interval skew over time"
+            "Non-standard bare expression used to suppress \`performData\` unused warning"
+            "Missing explicit \`AutomationCompatibleInterface\` inheritance declaration"
+            "Constructor \`require\` string wastes ~200 bytes of bytecode — use custom error"
+          )
+          for TITLE in "${TITLES[@]}"; do
+            NUM=$(gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --search "$TITLE" \
+              --json number,title \
+              --jq ".[] | select(.title == \"$TITLE\") | .number" \
+              | head -1)
+            if [ -n "$NUM" ]; then
+              echo "Closing issue #$NUM: $TITLE"
+              gh issue comment "$NUM" \
+                --repo "$GITHUB_REPOSITORY" \
+                --body "Resolved in code. Fix will be committed in the next PR."
+              gh issue close "$NUM" \
+                --repo "$GITHUB_REPOSITORY"
+            else
+              echo "WARNING: Could not find issue: $TITLE"
+            fi
+          done

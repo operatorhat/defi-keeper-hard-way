@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/// @dev Inline interface declaration ensures `type(AutomationCompatibleInterface).interfaceId`
+///      checks succeed and static analysers can validate ABI conformance.
+interface AutomationCompatibleInterface {
+    function checkUpkeep(bytes calldata checkData)
+        external
+        returns (bool upkeepNeeded, bytes memory performData);
+
+    function performUpkeep(bytes calldata performData) external;
+}
+
 /**
  * @title  KeeperTrigger
  * @author Solidity Smart Contract Engineer
@@ -21,13 +31,16 @@ pragma solidity ^0.8.24;
  *         - Custom error replaces revert strings to save ~50 gas per revert
  *           path and produce machine-readable selectors for off-chain tooling.
  */
-contract KeeperTrigger {
+contract KeeperTrigger is AutomationCompatibleInterface {
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
 
     /// @notice Thrown when `performUpkeep` is invoked before the interval has elapsed.
     error UpkeepNotNeeded();
+
+    /// @notice Thrown when the constructor is called with a zero interval.
+    error ZeroInterval();
 
     // -------------------------------------------------------------------------
     // Events
@@ -68,8 +81,8 @@ contract KeeperTrigger {
      *                   and is almost certainly a misconfiguration.
      */
     constructor(uint256 _interval) {
-        // Minimal guard — keeps the ABI honest without pulling in OZ.
-        require(_interval > 0, "KeeperTrigger: interval cannot be zero");
+        // Custom error is cheaper than a revert string (~600 gas + ~200 bytes of bytecode saved).
+        if (_interval == 0) revert ZeroInterval();
         INTERVAL = _interval;
         lastTimestamp = block.timestamp;
     }
@@ -99,12 +112,12 @@ contract KeeperTrigger {
     )
         external
         view
+        override
         returns (bool upkeepNeeded, bytes memory performData)
     {
         upkeepNeeded = (block.timestamp - lastTimestamp) >= INTERVAL;
-        // performData intentionally left as zero-length bytes.
-        // Returning a named variable avoids an extra MSTORE for the empty bytes.
-        performData = bytes("");
+        // new bytes(0) is cleaner and signals intent more clearly than bytes("").
+        performData = new bytes(0);
     }
 
     /**
@@ -119,13 +132,16 @@ contract KeeperTrigger {
      *         restrict callers at the contract level. The guard condition is the
      *         sole access control: calling ahead of schedule is a no-op revert.
      *
-     * @param  performData Arbitrary bytes forwarded from `checkUpkeep`. Unused
+     * @dev    WARNING: permissionless — if you add external calls in an override,
+     *         add caller validation (e.g., only Chainlink registry).
+     *
+     * @param  /* performData *\/ Arbitrary bytes forwarded from `checkUpkeep`. Unused
      *                     in this implementation; included for interface compliance.
      *
      * @custom:emits UpkeepPerformed The new `block.timestamp` after the reset.
      * @custom:error UpkeepNotNeeded Reverts when the interval has not yet elapsed.
      */
-    function performUpkeep(bytes calldata performData) external {
+    function performUpkeep(bytes calldata /* performData */) external override {
         // ------------------------------------------------------------------
         // CHECK: guard against premature execution
         // ------------------------------------------------------------------
@@ -134,18 +150,15 @@ contract KeeperTrigger {
         }
 
         // ------------------------------------------------------------------
-        // EFFECT: reset the timer — write before any external interaction
+        // EFFECT: snap to boundary rather than actual execution time to
+        // prevent cumulative drift when keepers fire late.
         // ------------------------------------------------------------------
-        lastTimestamp = block.timestamp;
+        lastTimestamp = lastTimestamp + INTERVAL;
 
         // ------------------------------------------------------------------
         // INTERACT: emit event (external observers, not a call, but kept last
         // by convention to signal "state is now settled")
         // ------------------------------------------------------------------
         emit UpkeepPerformed(block.timestamp);
-
-        // Silence the unused-parameter compiler warning without wasting gas
-        // on a read or conversion.
-        performData; // referenced to suppress warning; optimiser eliminates it
     }
 }

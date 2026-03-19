@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import "forge-std/Test.sol";
-import "../src/KeeperTrigger.sol";
+import {Test} from "forge-std/Test.sol";
+import {KeeperTrigger} from "../src/KeeperTrigger.sol";
 
 contract KeeperTriggerTest is Test {
     KeeperTrigger keeper;

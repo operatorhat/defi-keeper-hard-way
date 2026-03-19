@@ -11,7 +11,7 @@ contract KeeperTriggerTest is Test {
         keeper = new KeeperTrigger(1 hours);
     }
 
-    function test_checkUpkeep_ReturnsFalse_BeforeInterval() public view {
+    function test_checkUpkeep_ReturnsFalse_BeforeInterval() public {
         (bool upkeepNeeded, bytes memory performData) = keeper.checkUpkeep("");
         assertFalse(upkeepNeeded);
         assertEq(performData, "");

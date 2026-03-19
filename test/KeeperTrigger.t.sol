@@ -37,9 +37,12 @@ contract KeeperTriggerTest is Test {
     }
 
     function test_performUpkeep_ResetsLastTimestamp() public {
+        uint256 deployTime = block.timestamp;
         vm.warp(block.timestamp + 7200);
         keeper.performUpkeep("");
-        assertEq(keeper.lastTimestamp(), block.timestamp);
+        // Snaps to the nearest boundary rather than actual execution time,
+        // preventing cumulative drift when keepers fire late.
+        assertEq(keeper.lastTimestamp(), deployTime + 3600);
     }
 
     function test_performUpkeep_EmitsUpkeepPerformed() public {
@@ -61,14 +64,18 @@ contract KeeperTriggerTest is Test {
     }
 
     function test_performUpkeep_SubsequentCallRevertsUntilNextInterval() public {
-        vm.warp(block.timestamp + 7200);
+        // Warp to 1.5 intervals; after snapping lastTimestamp to deployTime+INTERVAL,
+        // the next call is still 0.5*INTERVAL too early — should revert.
+        vm.warp(block.timestamp + 5400);
         keeper.performUpkeep("");
         vm.expectRevert(KeeperTrigger.UpkeepNotNeeded.selector);
         keeper.performUpkeep("");
     }
 
     function test_checkUpkeep_ReturnsFalse_AfterSuccessfulPerform() public {
-        vm.warp(block.timestamp + 7200);
+        // Warp to 1.5 intervals so after snapping lastTimestamp to deployTime+INTERVAL,
+        // the remaining time is only 0.5*INTERVAL — checkUpkeep should still return false.
+        vm.warp(block.timestamp + 5400);
         keeper.performUpkeep("");
         (bool upkeepNeeded,) = keeper.checkUpkeep("");
         assertFalse(upkeepNeeded);
@@ -86,21 +93,23 @@ contract KeeperTriggerTest is Test {
     }
 
     function test_constructor_RevertsOnZeroInterval() public {
-        vm.expectRevert("KeeperTrigger: interval cannot be zero");
+        vm.expectRevert(KeeperTrigger.ZeroInterval.selector);
         new KeeperTrigger(0);
     }
 
     function test_performUpkeep_AnyCallerCanTrigger() public {
+        uint256 deployTime = block.timestamp;
         vm.warp(block.timestamp + 7200);
         address prankAddress = address(0x1234);
         vm.prank(prankAddress);
         keeper.performUpkeep("");
-        assertEq(keeper.lastTimestamp(), block.timestamp);
+        assertEq(keeper.lastTimestamp(), deployTime + 3600);
     }
 
     function test_performUpkeep_PerformDataParamIgnored() public {
+        uint256 deployTime = block.timestamp;
         vm.warp(block.timestamp + 7200);
         keeper.performUpkeep(hex"deadbeef");
-        assertEq(keeper.lastTimestamp(), block.timestamp);
+        assertEq(keeper.lastTimestamp(), deployTime + 3600);
     }
 }

@@ -22,7 +22,6 @@ pragma solidity ^0.8.24;
  *           path and produce machine-readable selectors for off-chain tooling.
  */
 contract KeeperTrigger {
-
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
@@ -71,7 +70,7 @@ contract KeeperTrigger {
     constructor(uint256 _interval) {
         // Minimal guard — keeps the ABI honest without pulling in OZ.
         require(_interval > 0, "KeeperTrigger: interval cannot be zero");
-        INTERVAL      = _interval;
+        INTERVAL = _interval;
         lastTimestamp = block.timestamp;
     }
 
@@ -95,7 +94,9 @@ contract KeeperTrigger {
      * @return upkeepNeeded  `true` when `block.timestamp - lastTimestamp >= interval`.
      * @return performData   Empty bytes; passed through to `performUpkeep` as-is.
      */
-    function checkUpkeep(bytes calldata /* checkData */)
+    function checkUpkeep(
+        bytes calldata /* checkData */
+    )
         external
         view
         returns (bool upkeepNeeded, bytes memory performData)
@@ -103,7 +104,7 @@ contract KeeperTrigger {
         upkeepNeeded = (block.timestamp - lastTimestamp) >= INTERVAL;
         // performData intentionally left as zero-length bytes.
         // Returning a named variable avoids an extra MSTORE for the empty bytes.
-        performData  = bytes("");
+        performData = bytes("");
     }
 
     /**

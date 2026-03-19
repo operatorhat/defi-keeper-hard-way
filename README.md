@@ -1,6 +1,3 @@
-Here's a portfolio-ready README. Copy and paste this directly into your `README.md`:
-
-```markdown
 # defi-keeper-hard-way
 
 A minimal, gas-tight Chainlink Automation upkeep trigger built with Solidity and Foundry.
@@ -78,12 +75,3 @@ test_constructor_RevertsOnZeroInterval
 
 - Solidity `^0.8.24`
 - [Foundry](https://book.getfoundry.sh/)
-```
-
-Then ship:
-
-```bash
-git add README.md
-git commit -m "docs: add portfolio README for KeeperTrigger"
-git push origin main
-```

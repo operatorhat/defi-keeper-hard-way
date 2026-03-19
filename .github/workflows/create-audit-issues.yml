@@ -13,6 +13,14 @@ jobs:
     name: File audit findings as GitHub Issues
     runs-on: ubuntu-latest
     steps:
+      - name: "Create required labels if they do not exist"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "security" --repo "$GITHUB_REPOSITORY" --color "d73a4a" --description "Security finding" 2>/dev/null || true
+          gh label create "design"   --repo "$GITHUB_REPOSITORY" --color "0075ca" --description "Design / architecture concern" 2>/dev/null || true
+          gh label create "gas"      --repo "$GITHUB_REPOSITORY" --color "e4e669" --description "Gas optimisation" 2>/dev/null || true
+
       - name: "Issue 1 – Validator timestamp manipulation"
         env:
           GH_TOKEN: ${{ github.token }}
